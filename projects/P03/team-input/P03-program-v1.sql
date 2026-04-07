@@ -2,24 +2,21 @@
 -- Group Number: 4
 -- Group Members:
 --   1. Yunus Emre Erkan
---   2. 
+--   2. Lee Chun Nga
 --   3. 
 --   4. 
 --
 
 -- Trigger 1
 
-CREATE OR REPLACE FUNCTION check_consecutive_ranks()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION validate_stage_ranks(s INTEGER)
+RETURNS VOID AS $$
 DECLARE
-  s INTEGER;
-  max_rank INTEGER;
   cnt INTEGER;
+  max_rank INTEGER;
   min_rank INTEGER;
   num_active_riders INTEGER;
 BEGIN
-  s := NEW.stage;
-
   SELECT COUNT(*), MAX(rank), MIN(rank)
   INTO cnt, max_rank, min_rank
   FROM results
@@ -31,7 +28,7 @@ BEGIN
     END IF;
 
     IF max_rank <> cnt THEN
-      RAISE EXCEPTION 'Ranks for stage % are not consecutive: max rank is % but there are % results', s, max_rank, cnt;
+      RAISE EXCEPTION 'Ranks for stage % are not consecutive', s;
     END IF;
 
     SELECT COUNT(*) INTO num_active_riders
@@ -42,8 +39,19 @@ BEGIN
     );
 
     IF cnt > num_active_riders THEN
-      RAISE EXCEPTION 'Stage % has % results but only % active riders', s, cnt, num_active_riders;
+      RAISE EXCEPTION 'Too many results for stage %', s;
     END IF;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION check_consecutive_ranks()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM validate_stage_ranks(NEW.stage);
+
+  IF TG_OP = 'UPDATE' AND OLD.stage IS DISTINCT FROM NEW.stage THEN
+    PERFORM validate_stage_ranks(OLD.stage);
   END IF;
 
   RETURN NULL;
@@ -56,17 +64,13 @@ CREATE CONSTRAINT TRIGGER trg_consecutive_ranks
   FOR EACH ROW
   EXECUTE FUNCTION check_consecutive_ranks();
 
-
 -- Trigger 2
 
-CREATE OR REPLACE FUNCTION check_rank_time_consistency()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION validate_rank_time(s INTEGER)
+RETURNS VOID AS $$
 DECLARE
-  s INTEGER;
   violation BOOLEAN;
 BEGIN
-  s := NEW.stage;
-
   SELECT EXISTS (
     SELECT 1
     FROM results r1
@@ -77,7 +81,18 @@ BEGIN
   ) INTO violation;
 
   IF violation THEN
-    RAISE EXCEPTION 'Rank-time inconsistency in stage %: a better-ranked rider has a worse time', s;
+    RAISE EXCEPTION 'Rank-time inconsistency in stage %', s;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION check_rank_time_consistency()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM validate_rank_time(NEW.stage);
+
+  IF TG_OP = 'UPDATE' AND OLD.stage IS DISTINCT FROM NEW.stage THEN
+    PERFORM validate_rank_time(OLD.stage);
   END IF;
 
   RETURN NULL;
@@ -103,7 +118,7 @@ BEGIN
   WHERE re.rider = NEW.rider;
 
   IF FOUND AND NEW.stage >= exit_stage THEN
-    RAISE EXCEPTION 'Rider % exited at stage % and cannot have results for stage %', NEW.rider, exit_stage, NEW.stage;
+    RAISE EXCEPTION 'Rider % exited at stage %', NEW.rider, exit_stage;
   END IF;
 
   RETURN NULL;
