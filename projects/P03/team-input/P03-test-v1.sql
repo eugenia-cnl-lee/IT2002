@@ -39,6 +39,8 @@ INSERT INTO stages (num, day, start, finish, length, type) VALUES (5, '2025-07-0
 INSERT INTO stages (num, day, start, finish, length, type) VALUES (6, '2025-07-10', 'Bordeaux', 'Lille', 160, 'flat');
 INSERT INTO stages (num, day, start, finish, length, type) VALUES (7, '2025-07-11', 'Lille', 'Strasbourg', 170, 'flat');
 
+SET CONSTRAINTS ALL IMMEDIATE;
+
 
 
 -- Test 1.1: consecutive ranks for stage 1
@@ -266,5 +268,26 @@ BEGIN
   RAISE NOTICE 'Test 6.3: PASSED (accepted)';
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Test 6.3: FAILED (unexpected rejection: %)', SQLERRM;
+END;
+$$;
+
+
+-- Test 6.4: Temporary rank gap fixed before commit
+DO $$
+BEGIN
+  SET CONSTRAINTS ALL DEFERRED;
+  RAISE NOTICE 'Test 6.4: Temporary rank gap fixed before commit (should ACCEPT)';
+
+  -- intermediate state invalid: ranks 1 and 3 only
+  INSERT INTO results (rider, stage, rank, time) VALUES (1, 2, 1, 3600);
+  INSERT INTO results (rider, stage, rank, time) VALUES (3, 2, 3, 3620);
+
+  -- final state valid before constraint check
+  INSERT INTO results (rider, stage, rank, time) VALUES (2, 2, 2, 3610);
+
+  SET CONSTRAINTS ALL IMMEDIATE;
+  RAISE NOTICE 'Test 6.4: PASSED (accepted)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Test 6.4: FAILED (unexpected rejection: %)', SQLERRM;
 END;
 $$;
