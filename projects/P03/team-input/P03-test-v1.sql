@@ -2,7 +2,7 @@
 -- Group Number: 4
 -- Group Members:
 --   1. Yunus Emre Erkan
---   2. 
+--   2. Lee Chun Nga
 --   3. 
 --   4. 
 --
@@ -58,7 +58,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Test 1.2: ranks with gap
+
+-- Test 1.2: Ranks with gap for stage 2
 DO $$
 BEGIN
   SET CONSTRAINTS ALL DEFERRED;
@@ -89,6 +90,7 @@ EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Test 2.1: FAILED (unexpected rejection: %)', SQLERRM;
 END;
 $$;
+
 
 -- Test 2.2: rank 1 has worse time than rank 2
 DO $$
@@ -121,6 +123,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+
 -- Test 3.2: result for exited rider at exit stage
 DO $$
 BEGIN
@@ -137,6 +140,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+
 -- Test 4.1: move stage 7 to july 12
 DO $$
 BEGIN
@@ -150,11 +154,12 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+
 -- Test 4.2: move stage 7 to july 13
 DO $$
 BEGIN
   SET CONSTRAINTS ALL DEFERRED;
-  RAISE NOTICE 'Test 4.2: Consecutive rest days(should REJECT)';
+  RAISE NOTICE 'Test 4.2: Consecutive rest days (should REJECT)';
   UPDATE stages SET day = '2025-07-13' WHERE num = 7;
   SET CONSTRAINTS ALL IMMEDIATE;
   RAISE NOTICE 'Test 4.2: FAILED (should have been rejected)';
@@ -163,6 +168,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 -- State unchanged: July 5,6,7,8,9,10,12
+
 
 -- Test 5.1: add stage 8 on july 14
 DO $$
@@ -178,6 +184,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+
 -- Test 5.2: add stage on july 17
 DO $$
 BEGIN
@@ -189,5 +196,75 @@ BEGIN
   RAISE NOTICE 'Test 5.2: FAILED (should have been rejected)';
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Test 5.2: PASSED (correctly rejected: %)', SQLERRM;
+END;
+$$;
+
+
+-- Test 6.1: UPDATE causes rank gap
+DO $$
+BEGIN
+  SET CONSTRAINTS ALL DEFERRED;
+  RAISE NOTICE 'Test 6.1: UPDATE causes rank gap (should REJECT)';
+
+  INSERT INTO results (rider, stage, rank, time) VALUES (1, 7, 1, 3600);
+  INSERT INTO results (rider, stage, rank, time) VALUES (2, 7, 2, 3610);
+  INSERT INTO results (rider, stage, rank, time) VALUES (3, 7, 3, 3620);
+
+  -- move rank 2 to stage 6 where rank 4 is free, leaving a gap in stage 7
+  INSERT INTO results (rider, stage, rank, time) VALUES (4, 6, 1, 3500);
+  INSERT INTO results (rider, stage, rank, time) VALUES (5, 6, 2, 3510);
+  INSERT INTO results (rider, stage, rank, time) VALUES (3, 6, 3, 3520);
+
+  UPDATE results
+  SET stage = 6, rank = 4
+  WHERE stage = 7 AND rank = 2;
+
+  SET CONSTRAINTS ALL IMMEDIATE;
+  RAISE NOTICE 'Test 6.1: FAILED (should have been rejected)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Test 6.1: PASSED (correctly rejected: %)', SQLERRM;
+END;
+$$;
+
+
+-- Test 6.2: UPDATE breaks rank-time consistency
+DO $$
+BEGIN
+  SET CONSTRAINTS ALL DEFERRED;
+  RAISE NOTICE 'Test 6.2: UPDATE breaks rank-time consistency (should REJECT)';
+
+  INSERT INTO results (rider, stage, rank, time) VALUES (1, 5, 1, 3600);
+  INSERT INTO results (rider, stage, rank, time) VALUES (2, 5, 2, 3610);
+
+  UPDATE results
+  SET time = 5000
+  WHERE stage = 5 AND rank = 1;
+
+  SET CONSTRAINTS ALL IMMEDIATE;
+  RAISE NOTICE 'Test 6.2: FAILED (should have been rejected)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Test 6.2: PASSED (correctly rejected: %)', SQLERRM;
+END;
+$$;
+
+
+-- Test 6.3: UPDATE valid stage move
+DO $$
+BEGIN
+  SET CONSTRAINTS ALL DEFERRED;
+  RAISE NOTICE 'Test 6.3: UPDATE valid stage move (should ACCEPT)';
+
+  INSERT INTO results (rider, stage, rank, time) VALUES (1, 6, 1, 3600);
+  INSERT INTO results (rider, stage, rank, time) VALUES (2, 6, 2, 3610);
+  INSERT INTO results (rider, stage, rank, time) VALUES (3, 7, 1, 3600);
+
+  UPDATE results
+  SET stage = 7, rank = 2
+  WHERE stage = 6 AND rank = 2;
+
+  SET CONSTRAINTS ALL IMMEDIATE;
+  RAISE NOTICE 'Test 6.3: PASSED (accepted)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Test 6.3: FAILED (unexpected rejection: %)', SQLERRM;
 END;
 $$;
